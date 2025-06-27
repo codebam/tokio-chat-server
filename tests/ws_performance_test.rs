@@ -32,8 +32,8 @@ async fn test_websocket_high_throughput() -> WsResult<()> {
     let tls_connector = tls_builder.build().unwrap();
     let tokio_connector = TokioTlsConnector::from(tls_connector);
 
-    let client_count = 10;
-    let messages_per_client = 1000;
+    let client_count = 100;
+    let messages_per_client = 100;
     let total_expected_messages = client_count * messages_per_client;
 
     let mut handles = Vec::new();
@@ -64,9 +64,9 @@ async fn test_websocket_high_throughput() -> WsResult<()> {
             let receive_task = tokio::spawn(async move {
                 let mut received_count = 0;
                 // Each client should receive messages from all OTHER clients (not itself)
-                // With 10 clients sending 1000 messages each, each client should receive ~9000 messages
+                // With 100 clients sending 100 messages each, each client should receive ~9900 messages
                 let expected_from_others = (client_count - 1) * messages_per_client;
-                let timeout_duration = Duration::from_secs(30);
+                let timeout_duration = Duration::from_secs(60);
                 let start = Instant::now();
                 
                 while received_count < expected_from_others && start.elapsed() < timeout_duration {
