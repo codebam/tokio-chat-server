@@ -1,15 +1,17 @@
-use chat_server::{run_chat_server, ChatMessage};
+use chat_server::{run_chat_server, run_chat_server_tls, create_test_tls_acceptor, ChatMessage};
 use std::time::Duration;
 use tokio::{
     net::{TcpListener, TcpStream},
     time::{sleep, timeout},
 };
 use tokio_tungstenite::{
-    client_async, 
+    client_async, client_async_tls,
     tungstenite::{Message, Result as WsResult},
 };
 use futures_util::{SinkExt, StreamExt};
 use url::Url;
+use native_tls::TlsConnector;
+use tokio_native_tls::TlsConnector as TokioTlsConnector;
 
 #[tokio::test]
 async fn test_server_accepts_connections() -> WsResult<()> {
@@ -275,5 +277,93 @@ async fn test_throughput_client_to_client() -> WsResult<()> {
     assert!(received_count >= message_count * 8 / 10, "Less than 80% of messages were received: {}/{}", received_count, message_count);
     assert!(elapsed.as_secs() < 30);
     
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_server_accepts_tls_connections() -> WsResult<()> {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let url = format!("wss://127.0.0.1:{}", addr.port());
+
+    let tls_acceptor = create_test_tls_acceptor().expect("Failed to create TLS acceptor");
+    tokio::spawn(async move {
+        run_chat_server_tls(listener, tls_acceptor).await;
+    });
+
+    sleep(Duration::from_millis(100)).await;
+
+    // Create TLS connector that accepts self-signed certificates for testing
+    let mut tls_builder = TlsConnector::builder();
+    tls_builder.danger_accept_invalid_certs(true);
+    tls_builder.danger_accept_invalid_hostnames(true);
+    let tls_connector = tls_builder.build().unwrap();
+    let tokio_connector = TokioTlsConnector::from(tls_connector);
+    
+    let stream = TcpStream::connect(addr).await.unwrap();
+    let tls_stream = tokio_connector.connect("127.0.0.1", stream).await.unwrap();
+    let url = Url::parse(&url).unwrap();
+    
+    let (ws_stream, _) = client_async(url, tls_stream).await?;
+    
+    // Connection successful if we get here
+    assert!(true);
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_tls_message_broadcast() -> WsResult<()> {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let url = format!("wss://127.0.0.1:{}", addr.port());
+
+    let tls_acceptor = create_test_tls_acceptor().expect("Failed to create TLS acceptor");
+    tokio::spawn(async move {
+        run_chat_server_tls(listener, tls_acceptor).await;
+    });
+
+    sleep(Duration::from_millis(100)).await;
+
+    // Create TLS connector that accepts self-signed certificates for testing
+    let mut tls_builder = TlsConnector::builder();
+    tls_builder.danger_accept_invalid_certs(true);
+    tls_builder.danger_accept_invalid_hostnames(true);
+    let tls_connector = tls_builder.build().unwrap();
+    let tokio_connector = TokioTlsConnector::from(tls_connector);
+
+    // Create client 1 (sender)
+    let stream1 = TcpStream::connect(addr).await.unwrap();
+    let tls_stream1 = tokio_connector.connect("127.0.0.1", stream1).await.unwrap();
+    let url1 = Url::parse(&url).unwrap();
+    let (ws1, _) = client_async(url1, tls_stream1).await?;
+    let (mut sender1, _) = ws1.split();
+
+    // Create client 2 (receiver)
+    let stream2 = TcpStream::connect(addr).await.unwrap();
+    let tls_stream2 = tokio_connector.connect("127.0.0.1", stream2).await.unwrap();
+    let url2 = Url::parse(&url).unwrap();
+    let (ws2, _) = client_async(url2, tls_stream2).await?;
+    let (_, mut receiver2) = ws2.split();
+
+    sleep(Duration::from_millis(50)).await;
+
+    // Send message from client 1
+    sender1.send(Message::Text("Hello from TLS client 1".to_string())).await?;
+
+    // Receive message on client 2
+    let result = timeout(Duration::from_secs(2), receiver2.next()).await;
+    assert!(result.is_ok());
+    
+    if let Some(msg) = result.unwrap() {
+        match msg? {
+            Message::Text(text) => {
+                let messages: Vec<ChatMessage> = serde_json::from_str(&text).unwrap();
+                assert!(!messages.is_empty());
+                assert!(messages[0].content.contains("Hello from TLS client 1"));
+            }
+            _ => panic!("Expected text message"),
+        }
+    }
+
     Ok(())
 }

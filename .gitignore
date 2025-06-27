@@ -1,3 +1,4 @@
 /target
 .direnv/
 .claude/
+test_cert.p12

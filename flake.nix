@@ -5,7 +5,8 @@
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
   };
 
-  outputs = { self, nixpkgs }:
+  outputs =
+    { self, nixpkgs }:
     let
       system = "x86_64-linux";
       pkgs = import nixpkgs {
@@ -18,6 +19,9 @@
           cargo
           rustc
           rust-analyzer
+          openssl
+          pkg-config
+          gcc
         ];
       };
     };

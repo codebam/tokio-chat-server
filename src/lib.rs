@@ -7,6 +7,8 @@ use tokio_tungstenite::{
     accept_async,
     tungstenite::{Message, Result as WsResult},
 };
+use native_tls::{Identity, TlsAcceptor};
+use tokio_native_tls::TlsAcceptor as TokioTlsAcceptor;
 use futures_util::{SinkExt, StreamExt};
 use std::{
     collections::HashMap,
@@ -32,6 +34,26 @@ struct ClientMetrics {
 }
 
 pub async fn run_chat_server(listener: TcpListener) {
+    run_chat_server_impl(listener, None).await;
+}
+
+pub async fn run_chat_server_tls(listener: TcpListener, tls_acceptor: TokioTlsAcceptor) {
+    run_chat_server_impl(listener, Some(tls_acceptor)).await;
+}
+
+pub fn create_tls_acceptor_from_pkcs12(pkcs12_data: &[u8], password: &str) -> Result<TokioTlsAcceptor, Box<dyn std::error::Error>> {
+    let identity = Identity::from_pkcs12(pkcs12_data, password)?;
+    let acceptor = TlsAcceptor::new(identity)?;
+    Ok(TokioTlsAcceptor::from(acceptor))
+}
+
+pub fn create_test_tls_acceptor() -> Result<TokioTlsAcceptor, Box<dyn std::error::Error>> {
+    // Embed test certificate data
+    let test_cert_p12 = include_bytes!("../test_cert.p12");
+    create_tls_acceptor_from_pkcs12(test_cert_p12, "testpass")
+}
+
+async fn run_chat_server_impl(listener: TcpListener, tls_acceptor: Option<TokioTlsAcceptor>) {
     let num_cores = num_cpus::get();
     println!("Detected {} CPU cores, optimizing for high fan-out performance", num_cores);
     
@@ -61,10 +83,11 @@ pub async fn run_chat_server(listener: TcpListener) {
         let counter = message_id_counter.clone();
         let metrics = client_metrics.clone();
         let connections = active_connections.clone();
+        let tls_acceptor = tls_acceptor.clone();
         
         tokio::spawn(async move {
             connections.fetch_add(1, Ordering::Relaxed);
-            if let Err(e) = handle_connection_fanout_optimized(socket, addr, tx, counter, metrics).await {
+            if let Err(e) = handle_connection_fanout_optimized(socket, addr, tx, counter, metrics, tls_acceptor).await {
                 eprintln!("Connection error for {}: {}", addr, e);
             }
             connections.fetch_sub(1, Ordering::Relaxed);
@@ -72,7 +95,7 @@ pub async fn run_chat_server(listener: TcpListener) {
     }
 }
 
-async fn handle_connection_fanout_optimized(
+async fn handle_plain_connection_fanout_optimized(
     socket: tokio::net::TcpStream,
     addr: SocketAddr,
     broadcast_tx: broadcast::Sender<ChatMessage>,
@@ -81,6 +104,50 @@ async fn handle_connection_fanout_optimized(
 ) -> WsResult<()> {
     let ws_stream = accept_async(socket).await?;
     let (ws_sender, ws_receiver) = ws_stream.split();
+    handle_ws_connection_fanout_optimized(ws_sender, ws_receiver, addr, broadcast_tx, counter, client_metrics).await
+}
+
+async fn handle_tls_connection_fanout_optimized(
+    socket: tokio::net::TcpStream,
+    addr: SocketAddr,
+    broadcast_tx: broadcast::Sender<ChatMessage>,
+    counter: Arc<AtomicU64>,
+    client_metrics: Arc<RwLock<HashMap<String, ClientMetrics>>>,
+    acceptor: TokioTlsAcceptor,
+) -> WsResult<()> {
+    let tls_stream = acceptor.accept(socket).await
+        .map_err(|e| tungstenite::Error::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+    let ws_stream = accept_async(tls_stream).await?;
+    let (ws_sender, ws_receiver) = ws_stream.split();
+    handle_ws_connection_fanout_optimized(ws_sender, ws_receiver, addr, broadcast_tx, counter, client_metrics).await
+}
+
+async fn handle_connection_fanout_optimized(
+    socket: tokio::net::TcpStream,
+    addr: SocketAddr,
+    broadcast_tx: broadcast::Sender<ChatMessage>,
+    counter: Arc<AtomicU64>,
+    client_metrics: Arc<RwLock<HashMap<String, ClientMetrics>>>,
+    tls_acceptor: Option<TokioTlsAcceptor>,
+) -> WsResult<()> {
+    if let Some(acceptor) = tls_acceptor {
+        handle_tls_connection_fanout_optimized(socket, addr, broadcast_tx, counter, client_metrics, acceptor).await
+    } else {
+        handle_plain_connection_fanout_optimized(socket, addr, broadcast_tx, counter, client_metrics).await
+    }
+}
+
+async fn handle_ws_connection_fanout_optimized<S>(
+    mut ws_sender: futures_util::stream::SplitSink<S, Message>,
+    mut ws_receiver: futures_util::stream::SplitStream<S>,
+    addr: SocketAddr,
+    broadcast_tx: broadcast::Sender<ChatMessage>,
+    counter: Arc<AtomicU64>,
+    client_metrics: Arc<RwLock<HashMap<String, ClientMetrics>>>,
+) -> WsResult<()> 
+where
+    S: futures_util::stream::Stream<Item = Result<Message, tungstenite::Error>> + futures_util::sink::Sink<Message, Error = tungstenite::Error> + Unpin + Send + 'static,
+{
     
     let client_id = addr.to_string();
     
