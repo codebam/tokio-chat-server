@@ -17,14 +17,14 @@ A high-performance WebSocket chat server built with Tokio, supporting both plain
 **Latest Test Results on 16-core system:**
 
 ### HTTP WebSocket Performance (ws://)
-| Test Scenario | Throughput | Efficiency | Details |
-|---------------|------------|------------|---------|
+| Test Scenario | Throughput | Delivery Rate | Details |
+|---------------|------------|---------------|---------|
 | Simple Throughput | **53,519 msg/sec** | 81.1% | 10k messages, 151ms |
-| WebSocket High Throughput | **71,133 msg/sec** | 105.6% | 10 clients, 10k messages, 148ms |
+| WebSocket High Throughput | **71,133 msg/sec** | 1.06x fan-out | 10 clients, 10k messages, 148ms |
 | Multicore High Throughput | **43,261 msg/sec** | 80.1% | 50 clients, 50k messages, 926ms |
-| 1-to-100 Fan-out | **43,215 msg/sec** | 100.0% | 500 msgs → 50k deliveries, 1.16s |
-| Burst Fan-out | **53,483 msg/sec** | 100.0% | 1k msgs → 75k deliveries, 1.40s |  
-| Complex Multi-sender | **4,420 msg/sec** | 89.0% | 10 senders → 50 receivers, 20.1s |
+| 1-to-100 Fan-out | **43,215 msg/sec** | 100x fan-out | 500 msgs → 50k deliveries, 1.16s |
+| Burst Fan-out | **53,483 msg/sec** | 75x fan-out | 1k msgs → 75k deliveries, 1.40s |  
+| Complex Multi-sender | **4,420 msg/sec** | 45x fan-out | 10 senders → 50 receivers, 20.1s |
 
 ### TLS WebSocket Performance (wss://)
 | Test Scenario | Throughput | TLS Overhead | HTTP vs TLS |
