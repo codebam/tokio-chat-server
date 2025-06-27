@@ -18,6 +18,9 @@ num_cpus = "1.16"
 parking_lot = "0.12"
 ahash = "0.8"
 flume = "0.11"
+bytes = "1.5"
+smallvec = "1.11"
+slab = "0.4"
 
 [lib]
 name = "chat_server"
