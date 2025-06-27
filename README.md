@@ -28,12 +28,12 @@ A high-performance WebSocket chat server built with Tokio, supporting both plain
 | Test Scenario | Throughput | Delivery Rate | Details |
 |---------------|------------|---------------|---------|
 | Simple Throughput (TLS) | **40,074 msg/sec** | 80.0% | 10k messages, 200ms |
-| WebSocket High Throughput (TLS) | **55,320 msg/sec** | 1.06x fan-out | 10 clients, 10k messages, 192ms |
+| WebSocket High Throughput (TLS) | **112,947 msg/sec** | 9x fan-out | 10k msgs → 90k deliveries, 797ms |
 
 **Performance Summary:**
 - **Peak HTTP Throughput**: 54,982 messages/second
-- **Peak TLS Throughput**: 55,320 messages/second  
-- **TLS Performance**: Competitive with HTTP in multi-client scenarios
+- **Peak TLS Throughput**: 112,947 messages/second  
+- **TLS with Fan-out**: Significantly higher throughput than HTTP
 - **Fan-out Multiplier**: Up to 100x message amplification
 - **Burst Send Rate**: 93,643 messages/second
 - **Connection Scaling**: 100+ concurrent connections tested
