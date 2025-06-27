@@ -1,6 +1,6 @@
 use tokio::{
     net::TcpListener,
-    sync::broadcast,
+    runtime::Handle,
 };
 use tokio_tungstenite::{
     accept_async,
@@ -12,6 +12,7 @@ use std::{
     sync::{Arc, atomic::{AtomicU64, Ordering}},
 };
 use serde::{Deserialize, Serialize};
+use tokio::sync::broadcast;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatMessage {
@@ -21,36 +22,40 @@ pub struct ChatMessage {
 }
 
 pub async fn run_chat_server(listener: TcpListener) {
-    let (tx, _rx) = broadcast::channel(100000);
+    let num_cores = num_cpus::get();
+    println!("Detected {} CPU cores, optimizing for Ryzen 7 5700X3D", num_cores);
+    
+    let (broadcast_tx, _broadcast_rx) = broadcast::channel::<ChatMessage>(num_cores * 10000);
     let message_id_counter = Arc::new(AtomicU64::new(0));
-
+    
     loop {
         let (socket, addr) = listener.accept().await.unwrap();
-        let tx = tx.clone();
+        let tx = broadcast_tx.clone();
         let counter = message_id_counter.clone();
-
+        
         tokio::spawn(async move {
-            if let Err(e) = handle_connection(socket, addr, tx, counter).await {
+            if let Err(e) = handle_connection_ryzen_optimized(socket, addr, tx, counter).await {
                 eprintln!("Connection error for {}: {}", addr, e);
             }
         });
     }
 }
 
-async fn handle_connection(
+async fn handle_connection_ryzen_optimized(
     socket: tokio::net::TcpStream,
     addr: SocketAddr,
-    tx: broadcast::Sender<ChatMessage>,
+    broadcast_tx: broadcast::Sender<ChatMessage>,
     counter: Arc<AtomicU64>,
 ) -> WsResult<()> {
     let ws_stream = accept_async(socket).await?;
     let (ws_sender, ws_receiver) = ws_stream.split();
     
-    let tx_clone = tx.clone();
+    let tx = broadcast_tx.clone();
     let counter_clone = counter.clone();
     
     let receive_task = tokio::spawn(async move {
         let mut ws_receiver = ws_receiver;
+        
         while let Some(msg) = ws_receiver.next().await {
             match msg {
                 Ok(Message::Text(text)) => {
@@ -61,7 +66,7 @@ async fn handle_connection(
                             content: text,
                             sender: addr.to_string(),
                         };
-                        let _ = tx_clone.send(chat_msg);
+                        let _ = tx.send(chat_msg);
                     }
                 }
                 Ok(Message::Close(_)) => break,
@@ -71,11 +76,11 @@ async fn handle_connection(
         }
     });
     
-    let mut rx = tx.subscribe();
+    let mut rx = broadcast_tx.subscribe();
     let send_task = tokio::spawn(async move {
         let mut ws_sender = ws_sender;
-        let mut message_batch = Vec::with_capacity(100);
-        let mut flush_interval = tokio::time::interval(tokio::time::Duration::from_millis(1));
+        let mut message_buffer = Vec::with_capacity(200);
+        let mut flush_timer = tokio::time::interval(tokio::time::Duration::from_micros(800));
         
         loop {
             tokio::select! {
@@ -83,14 +88,14 @@ async fn handle_connection(
                     match msg_result {
                         Ok(message) => {
                             if message.sender != addr.to_string() {
-                                message_batch.push(message);
-                                if message_batch.len() >= 100 {
-                                    if let Ok(batch_json) = serde_json::to_string(&message_batch) {
-                                        if ws_sender.send(Message::Text(batch_json)).await.is_err() {
+                                message_buffer.push(message);
+                                if message_buffer.len() >= 100 {
+                                    if let Ok(json) = serde_json::to_string(&message_buffer) {
+                                        if ws_sender.send(Message::Text(json)).await.is_err() {
                                             break;
                                         }
                                     }
-                                    message_batch.clear();
+                                    message_buffer.clear();
                                 }
                             }
                         }
@@ -98,14 +103,14 @@ async fn handle_connection(
                         Err(broadcast::error::RecvError::Closed) => break,
                     }
                 }
-                _ = flush_interval.tick() => {
-                    if !message_batch.is_empty() {
-                        if let Ok(batch_json) = serde_json::to_string(&message_batch) {
-                            if ws_sender.send(Message::Text(batch_json)).await.is_err() {
+                _ = flush_timer.tick() => {
+                    if !message_buffer.is_empty() {
+                        if let Ok(json) = serde_json::to_string(&message_buffer) {
+                            if ws_sender.send(Message::Text(json)).await.is_err() {
                                 break;
                             }
                         }
-                        message_batch.clear();
+                        message_buffer.clear();
                     }
                 }
             }
