@@ -146,7 +146,7 @@ async fn test_throughput_client_to_client() {
 
     sleep(Duration::from_millis(100)).await;
 
-    let message_count = 100;
+    let message_count = 2000;
     let test_message = "Throughput test\n";
 
     let start_time = std::time::Instant::now();
@@ -157,9 +157,8 @@ async fn test_throughput_client_to_client() {
         if i == 0 {
             sleep(Duration::from_millis(50)).await;
         }
-        if i % 10 == 0 {
+        if i % 50 == 0 && i > 0 {
             sender.flush().await.unwrap();
-            sleep(Duration::from_millis(1)).await;
         }
     }
     sender.flush().await.unwrap();
