@@ -24,6 +24,7 @@ async fn test_single_sender_massive_fanout() -> WsResult<()> {
 
     sleep(Duration::from_millis(300)).await;
 
+
     // Test 1 sender broadcasting to 100 receivers (high fan-out)
     let num_receivers = 100;
     let messages_to_send = 500;
@@ -147,6 +148,7 @@ async fn test_multiple_senders_fanout() -> WsResult<()> {
 
     sleep(Duration::from_millis(300)).await;
 
+
     // Test N senders broadcasting to M receivers (complex fan-out)
     let num_senders = 10;
     let num_receivers = 50;
@@ -269,6 +271,7 @@ async fn test_burst_fanout_performance() -> WsResult<()> {
     });
 
     sleep(Duration::from_millis(300)).await;
+
 
     // Test burst sending with high fan-out
     let num_receivers = 75;

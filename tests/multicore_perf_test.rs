@@ -24,6 +24,7 @@ async fn test_multicore_high_throughput() -> WsResult<()> {
 
     sleep(Duration::from_millis(200)).await;
 
+
     let concurrent_clients = 50;
     let messages_per_client = 1000;
     let total_messages_sent = concurrent_clients * messages_per_client;

@@ -1,4 +1,4 @@
-use chat_server::{run_chat_server, ChatMessage};
+use chat_server::{run_chat_server_tls, create_test_tls_acceptor, ChatMessage};
 use tokio::{
     net::{TcpListener, TcpStream},
     time::{sleep, timeout, Duration, Instant},
@@ -9,18 +9,28 @@ use tokio_tungstenite::{
 };
 use futures_util::{SinkExt, StreamExt};
 use url::Url;
+use native_tls::TlsConnector;
+use tokio_native_tls::TlsConnector as TokioTlsConnector;
 
 #[tokio::test]
 async fn test_websocket_high_throughput() -> WsResult<()> {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
-    let url = format!("ws://127.0.0.1:{}", addr.port());
+    let url = format!("wss://127.0.0.1:{}", addr.port());
 
+    let tls_acceptor = create_test_tls_acceptor().expect("Failed to create TLS acceptor");
     tokio::spawn(async move {
-        run_chat_server(listener).await;
+        run_chat_server_tls(listener, tls_acceptor).await;
     });
 
     sleep(Duration::from_millis(100)).await;
+
+    // Create TLS connector that accepts self-signed certificates for testing
+    let mut tls_builder = TlsConnector::builder();
+    tls_builder.danger_accept_invalid_certs(true);
+    tls_builder.danger_accept_invalid_hostnames(true);
+    let tls_connector = tls_builder.build().unwrap();
+    let tokio_connector = TokioTlsConnector::from(tls_connector);
 
     let client_count = 10;
     let messages_per_client = 1000;
@@ -31,10 +41,12 @@ async fn test_websocket_high_throughput() -> WsResult<()> {
 
     for client_id in 0..client_count {
         let client_url = url.clone();
+        let tokio_connector_clone = tokio_connector.clone();
         let handle = tokio::spawn(async move {
-            let stream = TcpStream::connect(format!("127.0.0.1:{}", addr.port())).await.unwrap();
+            let stream = TcpStream::connect(addr).await.unwrap();
+            let tls_stream = tokio_connector_clone.connect("127.0.0.1", stream).await.unwrap();
             let url = Url::parse(&client_url).unwrap();
-            let (ws_stream, _) = client_async(url, stream).await.unwrap();
+            let (ws_stream, _) = client_async(url, tls_stream).await.unwrap();
             let (mut sender, mut receiver) = ws_stream.split();
 
             let send_task = tokio::spawn(async move {
@@ -107,22 +119,32 @@ async fn test_websocket_high_throughput() -> WsResult<()> {
 async fn test_websocket_basic_functionality() -> WsResult<()> {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
-    let url = format!("ws://127.0.0.1:{}", addr.port());
+    let url = format!("wss://127.0.0.1:{}", addr.port());
 
+    let tls_acceptor = create_test_tls_acceptor().expect("Failed to create TLS acceptor");
     tokio::spawn(async move {
-        run_chat_server(listener).await;
+        run_chat_server_tls(listener, tls_acceptor).await;
     });
 
     sleep(Duration::from_millis(100)).await;
 
+    // Create TLS connector that accepts self-signed certificates for testing
+    let mut tls_builder = TlsConnector::builder();
+    tls_builder.danger_accept_invalid_certs(true);
+    tls_builder.danger_accept_invalid_hostnames(true);
+    let tls_connector = tls_builder.build().unwrap();
+    let tokio_connector = TokioTlsConnector::from(tls_connector);
+
     let stream1 = TcpStream::connect(addr).await.unwrap();
+    let tls_stream1 = tokio_connector.connect("127.0.0.1", stream1).await.unwrap();
     let stream2 = TcpStream::connect(addr).await.unwrap();
+    let tls_stream2 = tokio_connector.connect("127.0.0.1", stream2).await.unwrap();
     
     let url1 = Url::parse(&url).unwrap();
     let url2 = Url::parse(&url).unwrap();
     
-    let (ws1, _) = client_async(url1, stream1).await.unwrap();
-    let (ws2, _) = client_async(url2, stream2).await.unwrap();
+    let (ws1, _) = client_async(url1, tls_stream1).await.unwrap();
+    let (ws2, _) = client_async(url2, tls_stream2).await.unwrap();
     
     let (mut sender1, mut receiver1) = ws1.split();
     let (mut sender2, mut receiver2) = ws2.split();
