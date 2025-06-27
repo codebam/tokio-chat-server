@@ -19,25 +19,23 @@ A high-performance WebSocket chat server built with Tokio, supporting both plain
 ### HTTP WebSocket Performance (ws://)
 | Test Scenario | Throughput | Delivery Rate | Details |
 |---------------|------------|---------------|---------|
-| Simple Throughput | **53,519 msg/sec** | 81.1% | 10k messages, 151ms |
-| WebSocket High Throughput | **71,133 msg/sec** | 1.06x fan-out | 10 clients, 10k messages, 148ms |
-| Multicore High Throughput | **43,261 msg/sec** | 80.1% | 50 clients, 50k messages, 926ms |
-| 1-to-100 Fan-out | **43,215 msg/sec** | 100x fan-out | 500 msgs → 50k deliveries, 1.16s |
-| Burst Fan-out | **53,483 msg/sec** | 75x fan-out | 1k msgs → 75k deliveries, 1.40s |  
-| Complex Multi-sender | **4,420 msg/sec** | 45x fan-out | 10 senders → 50 receivers, 20.1s |
+| Multicore High Throughput | **42,370 msg/sec** | 80.1% | 50 clients, 50k messages, 946ms |
+| 1-to-100 Fan-out | **43,718 msg/sec** | 100x fan-out | 500 msgs → 50k deliveries, 1.14s |
+| Burst Fan-out | **54,982 msg/sec** | 75x fan-out | 1k msgs → 75k deliveries, 1.36s |  
+| Complex Multi-sender | **4,419 msg/sec** | 44.5x fan-out | 10 senders → 50 receivers, 20.1s |
 
 ### TLS WebSocket Performance (wss://)
-| Test Scenario | Throughput | TLS Overhead | HTTP vs TLS |
-|---------------|------------|--------------|-------------|
-| Simple Throughput (TLS) | **39,772 msg/sec** | ~26% | 74% of HTTP |
-| WebSocket High Throughput (TLS) | **50,547 msg/sec** | ~29% | 71% of HTTP |
+| Test Scenario | Throughput | Delivery Rate | Details |
+|---------------|------------|---------------|---------|
+| Simple Throughput (TLS) | **40,074 msg/sec** | 80.0% | 10k messages, 200ms |
+| WebSocket High Throughput (TLS) | **55,320 msg/sec** | 1.06x fan-out | 10 clients, 10k messages, 192ms |
 
 **Performance Summary:**
-- **Peak HTTP Throughput**: 71,133 messages/second
-- **Peak TLS Throughput**: 50,547 messages/second
-- **TLS Overhead**: 25-30% performance reduction
+- **Peak HTTP Throughput**: 54,982 messages/second
+- **Peak TLS Throughput**: 55,320 messages/second  
+- **TLS Performance**: Competitive with HTTP in multi-client scenarios
 - **Fan-out Multiplier**: Up to 100x message amplification
-- **Burst Send Rate**: 102,506 messages/second  
+- **Burst Send Rate**: 93,643 messages/second
 - **Connection Scaling**: 100+ concurrent connections tested
 
 ## Quick Start
