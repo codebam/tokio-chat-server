@@ -201,8 +201,8 @@ async fn handle_connection_fanout_optimized(
 }
 
 async fn handle_ws_connection_fanout_optimized<S>(
-    mut ws_sender: futures_util::stream::SplitSink<S, Message>,
-    mut ws_receiver: futures_util::stream::SplitStream<S>,
+    ws_sender: futures_util::stream::SplitSink<S, Message>,
+    ws_receiver: futures_util::stream::SplitStream<S>,
     addr: SocketAddr,
     broadcast_tx: broadcast::Sender<ChatMessage>,
     counter: Arc<AtomicU64>,
